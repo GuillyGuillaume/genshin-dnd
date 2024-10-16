@@ -1,111 +1,86 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const cors = require('cors'); // Import cors
-const http = require('http');
-const socketIo = require('socket.io');
+const { Pool } = require('pg'); // Import pg
+const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 5000; // Use environment port if available
-const saveFilePath = path.join(__dirname, './saves/pins.json');
+const PORT = 5000; // Adjust as necessary
+
+// Create a new pool instance with your database configuration
+const pool = new Pool({
+  user: 'genshin_dnd_db_user',
+  host: 'dpg-cs848llumphs73800fh0-a.oregon-postgres.render.com',
+  database: 'genshin_dnd_db',
+  password: 'VNZqlwacotXND48Jiovx7EURWeVGEdhh',
+  port: 5432,
+});
 
 // Middleware
-app.use(cors()); // Enable CORS
-app.use(express.json()); // Parse JSON bodies
-
-// Function to read pins from the JSON file
-const readPinsFromFile = () => {
-  try {
-    const data = fs.readFileSync(saveFilePath);
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading pins:', error);
-    return [];
-  }
-};
-
-// Function to write pins to the JSON file
-const writePinsToFile = (pins) => {
-  try {
-    fs.writeFileSync(saveFilePath, JSON.stringify(pins, null, 2));
-  } catch (error) {
-    console.error('Error writing pins:', error);
-  }
-};
+app.use(cors());
+app.use(express.json());
 
 // Route to get all pins
-app.get('/pins', (req, res) => {
-  const pins = readPinsFromFile();
-  res.json(pins);
+app.get('/pins', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM pins ORDER BY id ASC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching pins:', error);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
 // Route to add a new pin
-app.post('/pins', (req, res) => {
-  const pins = readPinsFromFile();
-  const newPin = { ...req.body, id: pins.length }; // Assign an ID based on current length
-  pins.push(newPin); // Add the new pin
-  writePinsToFile(pins); // Save to file
-  res.status(201).json(newPin); // Send back the created pin
+app.post('/pins', async (req, res) => {
+  const { lat, lng, iconUrl } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO pins (lat, lng, icon_url) VALUES ($1, $2, $3) RETURNING *',
+      [lat, lng, iconUrl]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding pin:', error);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
 // Route to update a pin's location by ID
-app.put('/pins/:id', (req, res) => {
-  const pinId = parseInt(req.params.id); // Get the pin ID from the URL
-  let pins = readPinsFromFile();
-  
-  // Find the pin and update its location
-  const pinIndex = pins.findIndex(pin => pin.id === pinId);
-  if (pinIndex !== -1) {
-    pins[pinIndex].lat = req.body.lat; // Update latitude
-    pins[pinIndex].lng = req.body.lng; // Update longitude
-    writePinsToFile(pins); // Save updated pins to file
-    res.status(200).json(pins[pinIndex]); // Send back the updated pin
-  } else {
-    res.status(404).send('Pin not found'); // Handle case where pin does not exist
+app.put('/pins/:id', async (req, res) => {
+  const pinId = parseInt(req.params.id);
+  const { lat, lng } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE pins SET lat = $1, lng = $2 WHERE id = $3 RETURNING *',
+      [lat, lng, pinId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).send('Pin not found');
+    }
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating pin location:', error);
+    res.status(500).send('Internal Server Error');
   }
 });
 
 // Route to delete a pin by ID
-app.delete('/pins/:id', (req, res) => {
-  const pinId = parseInt(req.params.id); // Get the pin ID from the URL
-  let pins = readPinsFromFile();
-  pins = pins.filter(pin => pin.id !== pinId); // Filter out the deleted pin
-  writePinsToFile(pins); // Save updated pins to file
-  res.status(204).send(); // Respond with no content
-});
-
-// Create server and Socket.io instance
-const server = http.createServer(app);
-const io = socketIo(server);
-
-// WebSocket connection
-io.on('connection', (socket) => {
-  console.log('A user connected');
-
-  socket.on('newPin', (pinData) => {
-    // Broadcast the new pin to all connected clients
-    io.emit('newPin', pinData);
-  });
-
-  socket.on('deletePin', (pinId) => {
-    // Broadcast the pin deletion to all connected clients
-    io.emit('deletePin', pinId);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('A user disconnected');
-  });
-});
-
-// Serve static files from the React app
-app.use(express.static(path.join(__dirname, 'build')));
-
-// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+app.delete('/pins/:id', async (req, res) => {
+  const pinId = parseInt(req.params.id);
+  
+  try {
+    const result = await pool.query('DELETE FROM pins WHERE id = $1', [pinId]);
+    if (result.rowCount === 0) {
+      return res.status(404).send('Pin not found');
+    }
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting pin:', error);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
 // Start the server
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
