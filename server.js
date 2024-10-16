@@ -2,9 +2,11 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors'); // Import cors
+const http = require('http');
+const socketIo = require('socket.io');
 
 const app = express();
-const PORT = 5000; // Adjust as necessary
+const PORT = process.env.PORT || 5000; // Use environment port if available
 const saveFilePath = path.join(__dirname, './saves/pins.json');
 
 // Middleware
@@ -72,7 +74,38 @@ app.delete('/pins/:id', (req, res) => {
   res.status(204).send(); // Respond with no content
 });
 
+// Create server and Socket.io instance
+const server = http.createServer(app);
+const io = socketIo(server);
+
+// WebSocket connection
+io.on('connection', (socket) => {
+  console.log('A user connected');
+
+  socket.on('newPin', (pinData) => {
+    // Broadcast the new pin to all connected clients
+    io.emit('newPin', pinData);
+  });
+
+  socket.on('deletePin', (pinId) => {
+    // Broadcast the pin deletion to all connected clients
+    io.emit('deletePin', pinId);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('A user disconnected');
+  });
+});
+
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, 'build')));
+
+// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+});
+
 // Start the server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });

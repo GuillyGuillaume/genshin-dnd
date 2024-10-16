@@ -1,0 +1,32 @@
+[
+  {
+    "lat": 76.2530390253986,
+    "lng": 116.58691406250001,
+    "iconUrl": "/static/media/guilly.50bf83f1f3670709b564.png",
+    "id": 0
+  },
+  {
+    "lat": 77.26468848060487,
+    "lng": 129.69834128500582,
+    "iconUrl": "/static/media/jelly.a20ee25cfa070285a626.png",
+    "id": 1
+  },
+  {
+    "lat": 77.63183613087983,
+    "lng": 122.25585937500001,
+    "iconUrl": "/static/media/liz.d07592f7dc1a4c4c6b4c.png",
+    "id": 2
+  },
+  {
+    "lat": 77.38950400539731,
+    "lng": 124.60693359375001,
+    "iconUrl": "/static/media/blank.bf41b37d61768391e342.png",
+    "id": 3
+  },
+  {
+    "lat": 78.52604008637459,
+    "lng": 122.13974753500582,
+    "iconUrl": "/static/media/vivi.90b85c6a277166568f0a.png",
+    "id": 4
+  }
+]
