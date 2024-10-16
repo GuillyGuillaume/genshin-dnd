@@ -2,14 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import mapImage from './img/map.jpeg';
-// pins
+// Pins
 import pin1 from './img/icons/guilly.png';
 import pin2 from './img/icons/vivi.png';
 import pin3 from './img/icons/jelly.png';
 import pin4 from './img/icons/liz.png';
 import pin5 from './img/icons/blank.png';
-// pins
+// Styles
 import './App.css';
+
+// Define the API URL dynamically based on the environment
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function App() {
   const [pins, setPins] = useState([]);
@@ -17,7 +20,6 @@ function App() {
 
   useEffect(() => {
     const map = initializeMap();
-
     fetchExistingPins(map);
 
     // Map click handler using ref instead of state
@@ -55,7 +57,7 @@ function App() {
   };
 
   const fetchExistingPins = (map) => {
-    fetch('http://localhost:5000/pins')
+    fetch(`${API_URL}/pins`)
       .then((response) => response.json())
       .then((existingPins) => {
         setPins(existingPins);
@@ -96,7 +98,7 @@ function App() {
   };
 
   const sendPinToServer = (lat, lng, iconUrl, newPin, map) => {
-    fetch('http://localhost:5000/pins', {
+    fetch(`${API_URL}/pins`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -122,7 +124,7 @@ function App() {
     if (pinId !== null) {
       pin.remove();
       setPins((prevPins) => prevPins.filter((p) => p.id !== pinId));
-      fetch(`http://localhost:5000/pins/${pinId}`, {
+      fetch(`${API_URL}/pins/${pinId}`, {
         method: 'DELETE',
       }).catch((error) => {
         console.error('Error deleting pin:', error);
@@ -140,7 +142,7 @@ function App() {
 
   const updatePinLocation = (pinId, lat, lng) => {
     if (pinId !== null) {
-      fetch(`http://localhost:5000/pins/${pinId}`, {
+      fetch(`${API_URL}/pins/${pinId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
