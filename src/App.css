@@ -31,3 +31,70 @@ html, body {
   width: 48px;
   height: 64px;
 }
+
+.custom-div-icon {
+  display: inline-block;
+  text-align: center;
+}
+
+.custom-pin {
+  text-align: center; /* Center controls and image */
+}
+
+.pin-image {
+  width: 50px;  /* Match this to your desired iconSize */
+  height: auto; /* Maintain aspect ratio */
+}
+
+
+.pin-controls {
+  position: absolute;
+  top: -30px;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px;
+  border-radius: 4px;
+}
+
+button {
+  margin: 0 2px;
+  padding: 2px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+.counter1, .counter2 {
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.pin-actions {
+  color: black; /* Set text color for the whole div */
+}
+
+.pin-actions h3 {
+  color: black; /* Ensure h3 text is black */
+}
+
+.pin-actions button {
+  color: black; /* Set button text color to black */
+}
+
+/* Optional: To enhance button appearance */
+.pin-actions button {
+  background-color: transparent; /* Make background transparent */
+  border: 1px solid black; /* Add a border */
+  padding: 5px 10px; /* Add some padding */
+  cursor: pointer; /* Change cursor to pointer on hover */
+}
+
+.pin-actions button:hover {
+  background-color: lightgray; /* Change background on hover for visibility */
+}

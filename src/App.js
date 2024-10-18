@@ -1,3 +1,5 @@
+import { database } from './firebase';
+import { ref, onValue, set, remove, update } from 'firebase/database';
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -12,12 +14,11 @@ import pin5 from './img/icons/blank.png';
 import './App.css';
 
 function App() {
-  const [pins, setPins] = useState([]);
   const selectedPinIconRef = useRef(pin1); // Use ref to avoid rerenders
+  const [selectedPin, setSelectedPin] = useState(null); // State for selected pin
 
   useEffect(() => {
     const map = initializeMap();
-
     fetchExistingPins(map);
 
     // Map click handler using ref instead of state
@@ -43,135 +44,168 @@ function App() {
     L.imageOverlay(mapImage, bounds).addTo(map);
     map.fitBounds(bounds);
 
+    map.whenReady(() => {
+      fetchExistingPins(map);
+    });
+
     return map;
   };
 
-  const createPinIcon = (iconUrl) => {
-    return L.icon({
-      iconUrl: iconUrl,
-      iconSize: [100, 128],
-      iconAnchor: [0, 128],
+  const createPinIconWithCounter = (iconUrl, hp, sp, pinId) => {
+    const pinWidth = 100;
+    const pinHeight = 128;
+
+    const svgIcon = 
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${pinWidth}" height="${pinHeight}">
+      <image href="${iconUrl}" width="${pinWidth}" height="${pinHeight}" />
+      <text x="10" y="90" fill="green" stroke="black" stroke-width="0.5" font-size="16" font-weight="900">${hp}</text>
+      <text x="10" y="110" fill="yellow" stroke="black" stroke-width="0.5" font-size="16" font-weight="900">${sp}</text>
+    </svg>`;
+
+    return L.divIcon({
+      html: svgIcon,
+      iconSize: [pinWidth, pinHeight],
+      iconAnchor: [0, pinHeight],
+      className: 'custom-div-icon',
     });
   };
 
   const fetchExistingPins = (map) => {
-    fetch('http://localhost:5000/pins')
-      .then((response) => response.json())
-      .then((existingPins) => {
-        setPins(existingPins);
-        existingPins.forEach((pinData) => {
-          const pinIcon = createPinIcon(pinData.iconUrl || selectedPinIconRef.current);
-          addPinToMap(pinData, map, pinIcon);
-        });
-      })
-      .catch((error) => {
-        console.error('Error fetching pins:', error);
+    const pinsRef = ref(database, 'pins');
+    onValue(pinsRef, (snapshot) => {
+      const existingPins = snapshot.val() || {};
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          layer.remove(); // Clear all markers on update
+        }
       });
+      Object.keys(existingPins).forEach((key) => {
+        const pinData = { id: key, ...existingPins[key] };
+        const pinIcon = createPinIconWithCounter(pinData.iconUrl || selectedPinIconRef.current, pinData.hp, pinData.sp, pinData.id);
+        addPinToMap(pinData, map, pinIcon);
+      });
+    });
   };
 
   const addPinToMap = (pinData, map, pinIcon) => {
     const pin = L.marker([pinData.lat, pinData.lng], { icon: pinIcon, draggable: true });
     pin.addTo(map);
-    pin.on('click', () => openDeletePopup(pinData.id, pin, map)); 
+
     pin.on('dragend', () => {
       const { lat, lng } = pin.getLatLng();
       updatePinLocation(pinData.id, lat, lng);
     });
+
+    // Add click event to set selected pin
+    pin.on('click', () => {
+      setSelectedPin(pinData);
+    });
   };
 
   const placePin = (e, map) => {
-    const pinIcon = createPinIcon(selectedPinIconRef.current); // Use ref for pin icon
-    const newPinData = { lat: e.latlng.lat, lng: e.latlng.lng, iconUrl: selectedPinIconRef.current };
+    const pinId = Date.now(); // Generate a unique ID for the new pin
+    const newPinData = {
+      id: pinId, // Add pinId to newPinData
+      lat: e.latlng.lat,
+      lng: e.latlng.lng,
+      iconUrl: selectedPinIconRef.current,
+      hp: 0,
+      sp: 0,
+    };
+  
+    const pinIcon = createPinIconWithCounter(newPinData.iconUrl, newPinData.hp, newPinData.sp, pinId);
+  
     const newPin = L.marker(e.latlng, { icon: pinIcon, draggable: true });
-
     newPin.addTo(map);
-    newPin.on('click', () => openDeletePopup(null, newPin, map));
+    
     newPin.on('dragend', () => {
       const { lat, lng } = newPin.getLatLng();
       updatePinLocation(null, lat, lng);
     });
-
-    setPins((prevPins) => [...prevPins, newPinData]);
-    sendPinToServer(e.latlng.lat, e.latlng.lng, selectedPinIconRef.current, newPin, map);
-  };
-
-  const sendPinToServer = (lat, lng, iconUrl, newPin, map) => {
-    fetch('http://localhost:5000/pins', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ lat, lng, iconUrl }),
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        const { id } = data;
-        setPins((prevPins) =>
-          prevPins.map((pin) =>
-            pin.lat === lat && pin.lng === lng ? { ...pin, id } : pin
-          )
-        );
-        newPin.on('click', () => openDeletePopup(id, newPin, map));
+  
+    const newPinRef = ref(database, `pins/${pinId}`);
+    set(newPinRef, newPinData)
+      .then(() => {
+        newPin.on('dragend', () => {
+          const { lat, lng } = newPin.getLatLng();
+          updatePinLocation(newPinRef.key, lat, lng);
+        });
       })
       .catch((error) => {
-        console.error('Error sending pin to server:', error);
+        console.error('Error saving pin:', error);
       });
-  };
-
-  const deletePin = (pinId, pin, map) => {
-    if (pinId !== null) {
-      pin.remove();
-      setPins((prevPins) => prevPins.filter((p) => p.id !== pinId));
-      fetch(`http://localhost:5000/pins/${pinId}`, {
-        method: 'DELETE',
-      }).catch((error) => {
-        console.error('Error deleting pin:', error);
-      });
-    } else {
-      const pinLatLng = pin.getLatLng();
-      pin.remove();
-      setPins((prevPins) =>
-        prevPins.filter(
-          (p) => !(p.lat === pinLatLng.lat && p.lng === pinLatLng.lng)
-        )
-      );
-    }
+    
+    // Set the newly created pin as the selected pin
+    setSelectedPin(newPinData);
   };
 
   const updatePinLocation = (pinId, lat, lng) => {
     if (pinId !== null) {
-      fetch(`http://localhost:5000/pins/${pinId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ lat, lng }),
-      }).catch((error) => {
+      update(ref(database, `pins/${pinId}`), { lat, lng }).catch((error) => {
         console.error('Error updating pin location:', error);
       });
     }
   };
 
-  const openDeletePopup = (pinId, pin, map) => {
-    const popupContent = L.DomUtil.create('div', 'pin-popup');
-    const deleteButton = L.DomUtil.create('button', '', popupContent);
-    deleteButton.innerText = 'Delete Pin';
-
-    const popup = L.popup({
-      closeOnClick: false,
-      autoClose: true,
-      closeButton: true,
-      offset: [0, -32],
-    })
-      .setLatLng(pin.getLatLng())
-      .setContent(popupContent)
-      .openOn(map);
-
-    L.DomEvent.on(deleteButton, 'click', () => {
-      deletePin(pinId, pin, map);
-      map.closePopup(); // Close the popup after deletion
-    });
+  const updatePinCounters = (pinId, hp, sp) => {
+    if (pinId !== null) {
+      update(ref(database, `pins/${pinId}`), { hp, sp }).catch((error) => {
+        console.error('Error updating pin counters:', error);
+      });
+    }
   };
+
+  const deletePin = (pinId, pin) => {
+    // Remove the pin from Firebase
+    remove(ref(database, `pins/${pinId}`))
+      .then(() => {
+        pin.remove(); // Remove the pin from the map
+        setSelectedPin(null); // Clear selected pin
+      })
+      .catch((error) => {
+        console.error('Error deleting pin:', error);
+      });
+  };
+
+  // Handlers for the action buttons
+  const handleIncrementHp = () => {
+    if (selectedPin) {
+      const newHp = selectedPin.hp + 1;
+      updatePinCounters(selectedPin.id, newHp, selectedPin.sp);
+      setSelectedPin({ ...selectedPin, hp: newHp }); // Update the selected pin state
+    }
+  };
+
+  const handleDecrementHp = () => {
+    if (selectedPin) {
+      const newHp = Math.max(selectedPin.hp - 1, 0); // Prevent HP from going below 0
+      updatePinCounters(selectedPin.id, newHp, selectedPin.sp);
+      setSelectedPin({ ...selectedPin, hp: newHp }); // Update the selected pin state
+    }
+  };
+
+  const handleIncrementSp = () => {
+    if (selectedPin) {
+      const newSp = selectedPin.sp + 1;
+      updatePinCounters(selectedPin.id, selectedPin.hp, newSp);
+      setSelectedPin({ ...selectedPin, sp: newSp }); // Update the selected pin state
+    }
+  };
+
+  const handleDecrementSp = () => {
+    if (selectedPin) {
+      const newSp = Math.max(selectedPin.sp - 1, 0); // Prevent SP from going below 0
+      updatePinCounters(selectedPin.id, selectedPin.hp, newSp);
+      setSelectedPin({ ...selectedPin, sp: newSp }); // Update the selected pin state
+    }
+  };
+
+  const handleDeletePin = () => {
+    if (selectedPin) {
+      deletePin(selectedPin.id);
+    }
+  };
+
 
   return (
     <div>
@@ -192,8 +226,20 @@ function App() {
         <button onClick={() => (selectedPinIconRef.current = pin5)}>
           <img src={pin5} alt="Pin Type 5" />
         </button>
+        {selectedPin && (
+          <div className="pin-actions">
+            <h3>Selected Pin Actions</h3>
+            <button onClick={handleDecrementHp}>-HP</button>
+            <button onClick={handleIncrementHp}>+HP</button>
+
+            <button onClick={handleDecrementSp}>-SP</button>
+            <button onClick={handleIncrementSp}>+SP</button>
+
+            <button onClick={handleDeletePin}>Delete</button>
+          </div>
+        )}
       </div>
-      <div id="map" className="map"></div>
+      <div id="map" style={{ height: '100vh', width: '100%' }}></div>
     </div>
   );
 }
